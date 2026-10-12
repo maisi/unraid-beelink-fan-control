@@ -1,0 +1,43 @@
+Menu="Dashboard:0"
+Cond="version_compare(parse_ini_file('/etc/unraid-version')['version'],'7.2.0','>=')"
+---
+<?php
+$mytiles['beelink-fan-control']['column2'] = <<<'HTML'
+<tbody id="bfc-dashboard" class="mixed" title="Beelink Lüfter">
+  <tr><td>
+    <span class="tile-header">
+      <span class="tile-header-left">
+        <i class="fa fa-tachometer f32" aria-hidden="true"></i>
+        <div class="section">
+          <h3 class="tile-header-main">Beelink Lüfter</h3>
+          <span class="bfc-dash-summary"><span class="bfc-dash-dot"></span><span data-bfc="summary" aria-live="polite">Status wird geladen …</span></span>
+        </div>
+      </span>
+      <span class="tile-header-right"><span class="tile-header-right-controls">
+        <a href="/Settings/BeelinkFans" title="Lüfterkurven einstellen" aria-label="Lüfterkurven einstellen"><i class="fa fa-fw fa-cog control" aria-hidden="true"></i></a>
+      </span></span>
+    </span>
+  </td></tr>
+  <tr><td>
+    <div class="bfc-dash-fans">
+      <div class="bfc-dash-fan" data-fan="cpu">
+        <div class="bfc-dash-name">CPU-Lüfter</div>
+        <div class="bfc-dash-rpm"><span data-bfc="rpm">—</span><small>U/min</small></div>
+        <div class="bfc-dash-detail" data-bfc="detail">—</div>
+        <span class="bfc-dash-mode" data-bfc="mode">—</span>
+      </div>
+      <div class="bfc-dash-fan" data-fan="system">
+        <div class="bfc-dash-name">Gehäuselüfter</div>
+        <div class="bfc-dash-rpm"><span data-bfc="rpm">—</span><small>U/min</small></div>
+        <div class="bfc-dash-detail" data-bfc="detail">—</div>
+        <span class="bfc-dash-mode" data-bfc="mode">—</span>
+      </div>
+    </div>
+    <div class="bfc-dash-warning" data-bfc="warning" role="status" hidden></div>
+    <div class="bfc-dash-footer"><span data-bfc="service">Dienststatus wird geladen …</span><span data-bfc="updated">Live · alle 5 s</span></div>
+    <link rel="stylesheet" href="/plugins/beelink-fan-control/dashboard.css?v=202610123">
+    <script src="/plugins/beelink-fan-control/dashboard.js?v=202610123" defer></script>
+  </td></tr>
+</tbody>
+HTML;
+?>

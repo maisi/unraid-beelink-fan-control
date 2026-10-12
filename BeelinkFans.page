@@ -1,0 +1,28 @@
+Menu="Utilities"
+Title="Beelink Lüfter"
+Icon="tachometer"
+---
+<link rel="stylesheet" href="/plugins/beelink-fan-control/style.css?v=20261012">
+<section id="bfc" class="bfc" data-csrf="<?=htmlspecialchars($var['csrf_token'] ?? '', ENT_QUOTES, 'UTF-8')?>">
+  <div class="bfc-heading">
+    <div><h2>Lüfterkurven</h2><p>Wähle für jeden Lüfter einen Sensor und die passende Kurve.</p></div>
+    <div class="bfc-service"><span id="bfc-service-dot" class="bfc-dot"></span><span id="bfc-service">Lade Sensoren …</span></div>
+  </div>
+  <div id="bfc-message" class="bfc-message" role="status" aria-live="polite" hidden></div>
+  <form id="bfc-form">
+    <div id="bfc-fans" class="bfc-grid"></div>
+    <div class="bfc-settings">
+      <label>CPU-Notkühlung ab <span class="bfc-inline"><input id="bfc-emergency" type="number" min="70" max="95" step="1" required> °C</span></label>
+      <label>Hysterese beim Absenken <span class="bfc-inline"><input id="bfc-hysteresis" type="number" min="0" max="5" step="0.5" required> °C</span></label>
+      <p>Bei Sensorfehlern, fehlender Drehzahl oder Erreichen der CPU-Grenze laufen die geregelten Lüfter auf 100 %.</p>
+    </div>
+    <div class="bfc-actions">
+      <button id="bfc-save" class="bfc-primary" type="submit" disabled>Speichern &amp; anwenden</button>
+      <button id="bfc-auto" type="button" disabled>Beide zurück auf Automatik</button>
+      <span id="bfc-dirty"></span>
+      <span id="bfc-updated" class="bfc-updated"></span>
+    </div>
+  </form>
+  <p class="bfc-footnote">Zwischen den Kurvenpunkten wird die Leistung gleichmäßig angepasst. Einstellungen gelten auch nach einem Neustart. Beim Ausschalten einer eigenen Kurve wird die bisherige Hardware-Automatik wiederhergestellt.</p>
+</section>
+<script src="/plugins/beelink-fan-control/app.js?v=20261012"></script>

@@ -1,0 +1,18 @@
+#bfc-dashboard .bfc-dash-summary { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: normal; line-height: 1.5; letter-spacing: 0; }
+#bfc-dashboard .bfc-dash-dot { flex: 0 0 7px; height: 7px; border-radius: 50%; background: #92989d; }
+#bfc-dashboard .bfc-dash-summary.active .bfc-dash-dot { background: #45a576; }
+#bfc-dashboard .bfc-dash-summary.warning .bfc-dash-dot { background: #dc9b39; }
+#bfc-dashboard .bfc-dash-summary.error .bfc-dash-dot { background: #df6049; }
+#bfc-dashboard .bfc-dash-fans { display: grid; gap: 16px; padding: 3px 0 7px; }
+#bfc-dashboard .bfc-dash-fan { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px 14px; align-items: center; min-width: 0; }
+#bfc-dashboard .bfc-dash-name { font-size: 13px; font-weight: 600; letter-spacing: 0; }
+#bfc-dashboard .bfc-dash-rpm { grid-column: 2; grid-row: 1 / span 2; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; font-size: 24px; line-height: 1.15; letter-spacing: 0; }
+#bfc-dashboard .bfc-dash-rpm small { display: block; font-size: 10px; opacity: .6; font-weight: normal; margin-top: 2px; }
+#bfc-dashboard .bfc-dash-detail { font-size: 11px; opacity: .7; line-height: 1.5; overflow-wrap: anywhere; letter-spacing: 0; }
+#bfc-dashboard .bfc-dash-mode { grid-column: 1 / -1; justify-self: start; font-size: 11px; line-height: 1.5; padding: 2px 7px; border-radius: 4px; background: rgba(128,128,128,.12); letter-spacing: 0; }
+#bfc-dashboard .bfc-dash-mode.active { color: #3b8e62; background: rgba(69,165,118,.13); }
+#bfc-dashboard .bfc-dash-mode.warning { color: #b77c25; background: rgba(220,155,57,.13); }
+#bfc-dashboard .bfc-dash-mode.error { color: #d45b42; background: rgba(223,96,73,.12); }
+#bfc-dashboard .bfc-dash-footer { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 10px; font-size: 10px; opacity: .62; line-height: 1.5; letter-spacing: 0; }
+#bfc-dashboard .bfc-dash-warning { font-size: 11px; color: #d45b42; line-height: 1.6; padding-top: 5px; overflow-wrap: anywhere; letter-spacing: 0; }
+#bfc-dashboard [hidden] { display: none !important; }

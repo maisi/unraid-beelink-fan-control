@@ -1,0 +1,14 @@
+{
+  "name": "unraid-beelink-fan-control",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Browser tests for the Beelink Fan Control Unraid plugin",
+  "license": "MIT",
+  "scripts": {
+    "test": "node ui_smoke.js && node dashboard_smoke.js",
+    "check": "node --check app.js && node --check dashboard.js"
+  },
+  "devDependencies": {
+    "playwright": "1.58.2"
+  }
+}

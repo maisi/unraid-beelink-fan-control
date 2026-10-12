@@ -1,0 +1,9 @@
+#!/bin/bash
+set -e
+controller=/usr/local/emhttp/plugins/beelink-fan-control/control.py
+action=${1:-status}
+case "$action" in
+    start|stop|status) /usr/bin/python3 "$controller" "$action" ;;
+    restart) /usr/bin/python3 "$controller" stop; /usr/bin/python3 "$controller" start ;;
+    *) echo "Usage: $0 {start|stop|restart|status}" >&2; exit 1 ;;
+esac
