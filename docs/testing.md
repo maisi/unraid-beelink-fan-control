@@ -6,7 +6,7 @@ IT8613E, running Unraid 7.2.4, kernel 6.12.54-Unraid, Python 3.9.18 and PHP
 
 ## Automated tests
 
-Eleven Python tests cover interpolation, endpoints, hysteresis, unavailable
+Python tests cover interpolation, endpoints, hysteresis, unavailable
 sensors, the independent CPU limit, a stalled fan, invalid curves and sensor
 IDs after hwmon renumbering. Tests of the guardian include normal restoration,
 competing hardware locks, a killed guardian, a killed controller and a stalled
@@ -17,6 +17,14 @@ selection, save/apply, automatic mode and mobile layout. Dashboard tests cover
 one/two active fans, hardware automatic mode, temperature-sensor protection,
 stopped services, stale status, controller errors, waiting control and network
 failure. Dashboard polling is read-only.
+
+Timed-test coverage includes API input limits, no changes to saved curves,
+temperature/sensor/stall overrides, pending-test removal on daemon startup,
+expiry back to hardware automatic mode with its original shared register,
+resumption of an enabled curve, updates to fixed duty without hysteresis,
+unchanged operation of the other fan and bounded diagnostic trace rotation.
+Daemon lifecycle tests use temporary hwmon files and a real guardian process.
+Browser tests cover start/stop, dashboard test status and diagnostic download.
 
 ## Live validation
 
@@ -35,6 +43,12 @@ On the supported hardware, the following checks passed:
   navigation to settings and back.
 - Display-only plugin updates preserved the running controller process and
   configuration.
+
+For the timed-test update, the installed settings page, dashboard, diagnostic
+download, invalid-duty rejection and Unraid CSRF enforcement were checked on
+the EQ12. Saved settings and the system boot ID were unchanged. No fixed-PWM
+hardware sweep was started during this update; the new test lifecycle and
+protection behavior were verified with simulated hwmon data.
 
 ## Limits
 

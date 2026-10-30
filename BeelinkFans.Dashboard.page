@@ -36,7 +36,7 @@ $mytiles['beelink-fan-control']['column2'] = <<<'HTML'
     <div class="bfc-dash-warning" data-bfc="warning" role="status" hidden></div>
     <div class="bfc-dash-footer"><span data-bfc="service">Dienststatus wird geladen …</span><span data-bfc="updated">Live · alle 5 s</span></div>
     <link rel="stylesheet" href="/plugins/beelink-fan-control/dashboard.css?v=202610123">
-    <script src="/plugins/beelink-fan-control/dashboard.js?v=202610123" defer></script>
+    <script src="/plugins/beelink-fan-control/dashboard.js?v=202610311" defer></script>
   </td></tr>
 </tbody>
 HTML;

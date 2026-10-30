@@ -17,7 +17,7 @@
       const configured = state.config?.fans || {};
       const age = Number.isFinite(service.updated) ? Math.max(0, (serverTime / 1000) - service.updated) : Infinity;
       const fresh = Boolean(service.running) && age <= 10 && !service.error;
-      let active = 0, protection = false, missing = false, manual = false;
+      let active = 0, testing = false, protection = false, missing = false, manual = false;
       for (const key of keys) {
         const row = root.querySelector(`[data-fan="${key}"]`);
         const fan = fans[key] || {};
@@ -36,12 +36,14 @@
           active++;
           const reasons = {
             curve: ['Eigene Kurve aktiv', 'active'],
+            test: ['Testmodus · feste Leistung', 'active'],
             sensor_error: ['Sensorfehler · 100 %', 'error'],
             fan_error: ['Drehzahlfehler · 100 %', 'error'],
             emergency: ['CPU-Notkühlung · 100 %', 'warning']
           };
           [text, tone] = reasons[target.reason] || ['Eigene Steuerung aktiv', 'active'];
-          protection ||= target.reason !== 'curve';
+          testing ||= target.reason === 'test';
+          protection ||= !['curve', 'test'].includes(target.reason);
         } else if (fan.mode !== 2) {
           manual = true;
           text = fan.mode === 0 ? 'Vollgas' : fan.mode === 1 ? 'Manuelle Regelung' : 'Modus nicht verfügbar';
@@ -58,6 +60,7 @@
       else if (!service.running) { label = 'Dienst angehalten'; tone = 'warning'; }
       else if (age > 10) { label = 'Status veraltet'; tone = 'warning'; }
       else if (protection) { label = 'Schutzfunktion aktiv'; tone = 'warning'; }
+      else if (testing) { label = 'Testmodus aktiv'; tone = 'active'; }
       else if (active) { label = `Steuerung aktiv · ${active}/2 Lüfter`; tone = 'active'; }
       else if (keys.some(key => configured[key]?.enabled)) { label = 'Eigene Steuerung wartet'; tone = 'warning'; }
       else if (manual) { label = 'Manuelle Regelung'; tone = 'warning'; }

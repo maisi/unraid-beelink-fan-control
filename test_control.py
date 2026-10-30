@@ -1,5 +1,6 @@
 import copy
 import fcntl
+import json
 import os
 from pathlib import Path
 import signal
@@ -179,7 +180,9 @@ time.sleep(20)
     def await_restoration(self):
         deadline = time.monotonic() + 3
         while time.monotonic() < deadline:
-            if self.hardware.read(self.hardware.attribute("cpu", "_auto_start")) == 95:
+            if all(self.hardware.read(self.hardware.attribute(key, "_auto_start")) == start and
+                   self.hardware.read(self.hardware.attribute(key, "_enable")) == 2
+                   for key, start in [("cpu", 95), ("system", 80)]):
                 self.assert_original()
                 return
             time.sleep(0.05)
@@ -204,6 +207,158 @@ time.sleep(20)
         finally:
             if child.poll() is None: child.kill()
             child.stdout.close()
+
+
+class TestModeTests(unittest.TestCase):
+    def test_protection_overrides_fixed_pwm(self):
+        fan = configuration()["fans"]["cpu"]
+        for selected, cpu, rpm, expected in [(50, 60, 3000, (80, "test")),
+                                             (None, 60, 3000, (100, "sensor_error")),
+                                             (50, None, 3000, (100, "sensor_error")),
+                                             (50, 90, 3000, (100, "emergency")),
+                                             (50, 60, 0, (100, "fan_error"))]:
+            with self.subTest(expected=expected):
+                self.assertEqual(c.target_percent(fan, selected, cpu, rpm, 10, 85, 80), expected)
+
+    def test_api_validation_timeout_and_stop_preserve_config(self):
+        with tempfile.TemporaryDirectory() as directory:
+            run = Path(directory)
+            hardware = FakeHardware(run)
+            sensor = {"id": "a" * 24, "celsius": 50}
+            config = configuration()
+            config["fans"]["cpu"]["enabled"] = False
+            path = run / "config.json"
+            c.atomic_json(path, config)
+            original = path.read_bytes()
+            with mock.patch.object(c, "RUN", run), mock.patch.object(c, "CONFIG", path), \
+                 mock.patch.object(c, "start_service"), mock.patch.object(c, "daemon_pid", return_value=123), \
+                 mock.patch.object(hardware, "sensors", return_value=[sensor]):
+                for values in [{"fan": "other", "percent": 80, "duration": 60},
+                               {"fan": "cpu", "percent": 19, "duration": 60},
+                               {"fan": "cpu", "percent": True, "duration": 60},
+                               {"fan": "cpu", "percent": 80, "duration": 301},
+                               {"fan": "cpu", "percent": 80, "duration": 0}]:
+                    with self.subTest(values=values), self.assertRaises(ValueError):
+                        c.api({"action": "test_start", "test": values}, hardware)
+                    self.assertFalse((run / "test.json").exists())
+                state = c.api({"action": "test_start", "test": {"fan": "cpu", "percent": 80, "duration": 60}}, hardware)
+                self.assertEqual(state["test"]["percent"], 80)
+                self.assertFalse(state["config"]["fans"]["cpu"]["enabled"])
+                with mock.patch.object(c.time, "monotonic", return_value=state["test"]["expires_mono"] + 1):
+                    self.assertIsNone(c.active_test())
+                c.api({"action": "test_stop"}, hardware)
+                self.assertIsNone(c.active_test())
+                self.assertEqual(path.read_bytes(), original)
+
+    def test_hardware_avoids_rewriting_unchanged_mode_and_duty(self):
+        with tempfile.TemporaryDirectory() as directory:
+            hardware = FakeHardware(directory)
+            hardware.set_percent("cpu", 80)
+            with mock.patch.object(hardware, "write", wraps=hardware.write) as write:
+                hardware.set_percent("cpu", 80)
+                write.assert_not_called()
+                hardware.set_percent("cpu", 75)
+                self.assertEqual(write.call_count, 1)
+                self.assertEqual(write.call_args.args[0].name, "pwm2")
+
+    def test_trace_is_bounded_and_partial_line_is_ignored(self):
+        with tempfile.TemporaryDirectory() as directory, mock.patch.object(c, "RUN", Path(directory)), \
+             mock.patch.object(c, "TRACE_LIMIT", 20):
+            for n in range(20):
+                c.record_sample({"time": n})
+            with (Path(directory) / "trace.jsonl").open("a") as handle:
+                handle.write('{"unfinished":')
+            self.assertEqual(c.diagnostic_samples()[-1], {"time": 19})
+            self.assertLess(len(c.diagnostic_samples()), 20)
+
+
+class DaemonTestModeTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.directory = Path(self.temporary.name)
+        self.hardware = FakeHardware(self.directory)
+        core = self.hardware.root / "hwmon1"
+        core.mkdir()
+        (core / "name").write_text("coretemp")
+        self.temp_path = core / "temp1_input"
+        self.temp_path.write_text("50000")
+        self.config = configuration()
+        sensor_id = self.hardware.sensors()[0]["id"]
+        for fan in self.config["fans"].values():
+            fan["sensor"] = sensor_id
+        self.config["fans"]["cpu"]["enabled"] = False
+        self.config_path = self.directory / "config.json"
+        c.atomic_json(self.config_path, self.config)
+        self.original = self.config_path.read_bytes()
+        # Pending tests from a previous daemon must be discarded at startup.
+        self.write_test("cpu", 90, 10)
+        script = """from pathlib import Path
+import sys
+import control as c
+from test_control import FakeHardware
+root = Path(sys.argv[1])
+c.RUN = root
+c.CONFIG = root/'config.json'
+c.INTERVAL = 0.05
+c.Hardware = lambda: FakeHardware(root)
+session = c.ProtectedSession
+c.ProtectedSession = lambda hardware,keys: session(hardware,keys,root/'hardware.lock')
+c.daemon()
+"""
+        self.child = subprocess.Popen([sys.executable, "-c", script, str(self.directory)],
+                                      cwd=str(Path(__file__).parent), stderr=subprocess.PIPE, text=True)
+        self.wait_for(lambda state: state.get("targets", {}).get("system", {}).get("reason") == "curve")
+        self.assertFalse((self.directory / "test.json").exists())
+
+    def tearDown(self):
+        if self.child.poll() is None:
+            self.child.terminate()
+        try:
+            self.child.wait(timeout=4)
+        finally:
+            if self.child.poll() is None:
+                self.child.kill()
+                self.child.wait(timeout=3)
+            self.child.stderr.close()
+            self.temporary.cleanup()
+
+    def write_test(self, fan, percent, duration):
+        c.atomic_json(self.directory / "test.json", {"fan": fan, "percent": percent,
+                      "expires_mono": time.monotonic() + duration})
+
+    def wait_for(self, predicate):
+        deadline = time.monotonic() + 4
+        while time.monotonic() < deadline:
+            state = c.read_json(self.directory / "state.json", {})
+            if predicate(state):
+                return state
+            if self.child.poll() is not None:
+                self.fail("Daemon exited: " + self.child.stderr.read())
+            time.sleep(0.02)
+        self.fail("Daemon state timeout: " + json.dumps(state))
+
+    def test_expiry_restores_auto_and_other_fan_curve(self):
+        self.write_test("cpu", 80, 0.8)
+        state = self.wait_for(lambda s: s.get("targets", {}).get("cpu", {}).get("reason") == "test")
+        self.assertEqual(state["targets"]["system"]["reason"], "curve")
+        self.assertEqual(self.hardware.read(self.hardware.attribute("cpu", "")), 204)
+        self.wait_for(lambda s: "cpu" not in s.get("targets", {}) and "system" in s.get("targets", {}))
+        self.assertEqual(self.hardware.read(self.hardware.attribute("cpu", "_enable")), 2)
+        self.assertEqual(self.hardware.read(self.hardware.attribute("cpu", "_auto_start")), 95)
+        self.assertEqual(self.config_path.read_bytes(), self.original)
+
+    def test_update_guard_stop_and_resume_enabled_curve(self):
+        self.write_test("system", 80, 10)
+        self.wait_for(lambda s: s.get("targets", {}).get("system", {}).get("percent") == 80)
+        self.write_test("system", 60, 10)
+        self.wait_for(lambda s: s.get("targets", {}).get("system", {}).get("percent") == 60)
+        self.temp_path.write_text("90000")
+        self.wait_for(lambda s: s.get("targets", {}).get("system", {}).get("reason") == "emergency")
+        self.temp_path.write_text("50000")
+        self.wait_for(lambda s: s.get("targets", {}).get("system", {}).get("reason") == "test")
+        (self.directory / "test.json").unlink()
+        self.wait_for(lambda s: s.get("targets", {}).get("system", {}).get("reason") == "curve")
+        self.assertEqual(self.config_path.read_bytes(), self.original)
 
 
 if __name__ == "__main__":

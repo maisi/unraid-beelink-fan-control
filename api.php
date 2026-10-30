@@ -4,9 +4,10 @@ header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $request = ['action' => 'status'];
+if ($method === 'GET' && ($_GET['action'] ?? '') === 'diagnostics') $request['action'] = 'diagnostics';
 if ($method === 'POST') {
     $action = $_POST['action'] ?? '';
-    if (!in_array($action, ['save', 'auto'], true)) {
+    if (!in_array($action, ['save', 'auto', 'test_start', 'test_stop'], true)) {
         http_response_code(400);
         echo json_encode(['ok' => false, 'error' => 'Unbekannte Aktion.']);
         exit;
@@ -20,6 +21,15 @@ if ($method === 'POST') {
             exit;
         }
         $request['config'] = json_decode($payload, true);
+    }
+    if ($action === 'test_start') {
+        $payload = $_POST['test'] ?? '';
+        if (!is_string($payload) || strlen($payload) > 1024) {
+            http_response_code(400);
+            echo json_encode(['ok' => false, 'error' => 'Ungültiger Test.']);
+            exit;
+        }
+        $request['test'] = json_decode($payload, true);
     }
 } elseif ($method !== 'GET') {
     http_response_code(405);
@@ -40,7 +50,7 @@ if (!is_resource($process)) {
 fwrite($pipes[0], json_encode($request));
 fclose($pipes[0]);
 stream_set_timeout($pipes[1], 8);
-$output = stream_get_contents($pipes[1], 65536);
+$output = stream_get_contents($pipes[1], 2097152);
 fclose($pipes[1]);
 fclose($pipes[2]);
 $exit = proc_close($process);

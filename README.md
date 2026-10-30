@@ -19,6 +19,8 @@ EQ12**, with an **AZW EQ board and ITE IT8613E** fan controller.
 - A separate watchdog restores the original hardware automatic control after
   an unexpected controller exit or a missed heartbeat.
 - Persistent settings and a self-contained, offline-installable plugin package.
+- Timed, fixed-PWM testing for one fan without changing saved curves.
+- A bounded RAM-only trace with a diagnostic JSON download.
 
 The interface is currently in German. On first installation both custom curves
 are disabled, so the existing hardware automatic control stays active.
@@ -121,6 +123,32 @@ The 20% lower limit is not a measured fan-start threshold for every unit. If
 RPM is unavailable or below 200 after an eight-second startup period, the
 controlled fan goes to full speed. Low-duty curves still need to be tuned for
 the actual hardware. See [validation and limits](docs/testing.md).
+
+## Test a fan
+
+Open the settings page and scroll to **Lüfter testen**. Choose a fan, a fixed
+PWM percentage (20–100%) and a duration (30 seconds to five minutes). Click
+**Test starten / Wert übernehmen**. The measured RPM remains visible in the
+fan card; this is a fixed duty test, not closed-loop RPM regulation.
+
+Only the selected fan is overridden. Its saved curve stays unchanged, including
+whether that curve is enabled. Applying another value resets the timer. Stop,
+expiry or saving settings returns to the saved curve or hardware automatic
+mode. Closing the browser does not stop the timer. Service restarts discard
+pending tests. CPU-temperature, sensor and stalled-fan protection still override
+the test and can request full speed.
+
+Use **Diagnose herunterladen** after unusual noise or an RPM drop. The JSON
+includes the current configuration and recent two-second samples of CPU/sensor
+temperatures, observed RPM, PWM mode/raw register/frequency/auto-start and
+commanded targets with their reasons. Each sample's hardware readings precede
+that cycle's target writes. The trace is bounded to two approximately 512 KiB
+files under `/var/run/beelink-fan-control/`, never routinely written to flash;
+the download includes up to the most recent 900 samples. Rebooting clears it.
+
+A sudden RPM drop at constant PWM can point to the fan, its supply or PWM
+response. A changing target or hardware mode points to a control transition.
+Noise alone cannot distinguish these; save a trace while the fault is present.
 
 ## Build and test
 

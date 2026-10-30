@@ -15,12 +15,13 @@
     $('bfc-message').textContent = text;
     $('bfc-message').classList.toggle('error', error);
   }
-  async function request(action, config) {
+  async function request(action, config, test) {
     const options = { credentials: 'same-origin', cache: 'no-store' };
     if (action) {
       options.method = 'POST';
       options.body = new URLSearchParams({ action, csrf_token: root.dataset.csrf });
       if (config) options.body.set('config', JSON.stringify(config));
+      if (test) options.body.set('test', JSON.stringify(test));
     }
     const response = await fetch(endpoint, options);
     let result;
@@ -56,6 +57,9 @@
   function updateControls() {
     $('bfc-save').disabled = !draft || busy || Boolean(validate());
     $('bfc-auto').disabled = !draft || busy;
+    $('bfc-test-start').disabled = !live || busy || !live.service.running;
+    $('bfc-test-stop').disabled = busy || !live?.test;
+    $('bfc-diagnostics').disabled = busy || !live;
     if (draft && dirty && validate()) {
       $('bfc-dirty').textContent = validate();
     } else if (dirty) {
@@ -164,9 +168,9 @@
       let mode = !fan.available ? 'Treiber fehlt' : fan.mode === 2 ? 'Hardware-Automatik' : 'Manuelle Regelung';
       let warning = false;
       if (target) {
-        const modes = { curve: 'Eigene Kurve', sensor_error: 'Sensorfehler · 100 %', emergency: 'CPU-Notkühlung · 100 %', fan_error: 'Drehzahlfehler · 100 %' };
+        const modes = { curve: 'Eigene Kurve', test: 'Testmodus · feste Leistung', sensor_error: 'Sensorfehler · 100 %', emergency: 'CPU-Notkühlung · 100 %', fan_error: 'Drehzahlfehler · 100 %' };
         mode = modes[target.reason] || mode;
-        warning = target.reason !== 'curve';
+        warning = !['curve', 'test'].includes(target.reason);
       }
       badge.textContent = mode;
       badge.className = `bfc-mode ${warning ? 'alert' : target ? 'active' : ''}`;
@@ -177,6 +181,9 @@
       chart(key);
     }
     $('bfc-updated').textContent = `Aktualisiert ${new Date().toLocaleTimeString('de-AT')}`;
+    const test = live.test;
+    $('bfc-test-status').textContent = test ? `${names[test.fan]}: ${test.percent} % angefordert · noch ${Math.ceil(test.remaining_s)} s. ${service.targets?.[test.fan]?.reason === 'test' ? 'Test aktiv.' : 'Übernahme ausstehend oder Schutzfunktion aktiv.'}` : 'Kein Test aktiv.';
+    updateControls();
   }
   async function poll() {
     if (polling || busy) return;
@@ -188,9 +195,33 @@
     } catch (error) {
       $('bfc-service').textContent = 'Verbindung unterbrochen';
       $('bfc-service-dot').className = 'bfc-dot error';
+      $('bfc-test-status').textContent = 'Verbindung unterbrochen. Ein laufender Test endet nach seiner Zeitbegrenzung.';
       message(error.message, true);
     } finally { polling = false; }
   }
+  async function testAction(action) {
+    if (busy) return;
+    const test = { fan: $('bfc-test-fan').value, percent: Number($('bfc-test-percent').value), duration: Number($('bfc-test-duration').value) };
+    busy = true; updateControls();
+    try {
+      live = await request(action, undefined, action === 'test_start' ? test : undefined);
+      updateLive();
+      message(action === 'test_stop' ? 'Test beendet. Die bisherige Regelung wird innerhalb von zwei Sekunden übernommen.' : 'Test angefordert. Temperatur- und Ausfallschutz bleiben aktiv.');
+    } catch (error) { message(error.message, true); }
+    finally { busy = false; updateControls(); }
+  }
+  $('bfc-test-form').addEventListener('submit', event => { event.preventDefault(); testAction('test_start'); });
+  $('bfc-test-stop').addEventListener('click', () => testAction('test_stop'));
+  $('bfc-diagnostics').addEventListener('click', async () => {
+    try {
+      const response = await fetch(`${endpoint}?action=diagnostics`, { credentials: 'same-origin', cache: 'no-store' });
+      const data = await response.json();
+      if (!response.ok || !data.ok) throw new Error(data.error || 'Diagnose nicht verfügbar.');
+      const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
+      const link = element('a'); link.href = url; link.download = `beelink-diagnose-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+      link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) { message(error.message, true); }
+  });
   async function apply(action) {
     const error = action === 'save' ? validate() : '';
     if (error) { message(error, true); return; }

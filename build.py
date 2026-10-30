@@ -9,7 +9,7 @@ import textwrap
 import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parent
-VERSION = "2026.10.12.4"
+VERSION = "2026.10.31.1"
 NAME = "beelink-fan-control"
 REPOSITORY = "https://github.com/maisi/unraid-beelink-fan-control"
 PLUGIN_URL = "https://raw.githubusercontent.com/maisi/unraid-beelink-fan-control/main/dist/beelink-fan-control.plg"
@@ -35,7 +35,7 @@ control_digest = hashlib.sha256((ROOT / "control.py").read_bytes()).hexdigest()
 encoded = "\n".join(textwrap.wrap(base64.b64encode(package).decode(), 100))
 xml = '''<?xml version="1.0" standalone="yes"?>
 <PLUGIN name="%s" author="maisi" version="%s" launch="Settings/BeelinkFans" min="7.2.4" pluginURL="%s" support="%s/issues">
-<CHANGES>Public GitHub distribution, native plugin update URL, per-fan curves and live dashboard.</CHANGES>
+<CHANGES>Timed per-fan fixed-PWM test mode with temperature protection, RAM-only diagnostic trace, and fewer redundant hardware writes.</CHANGES>
 <FILE Name="%s" Type="base64">
 <SHA256>%s</SHA256>
 <INLINE>%s</INLINE>

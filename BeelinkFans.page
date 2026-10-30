@@ -2,7 +2,7 @@ Menu="Utilities"
 Title="Beelink Lüfter"
 Icon="tachometer"
 ---
-<link rel="stylesheet" href="/plugins/beelink-fan-control/style.css?v=20261012">
+<link rel="stylesheet" href="/plugins/beelink-fan-control/style.css?v=202610311">
 <section id="bfc" class="bfc" data-csrf="<?=htmlspecialchars($var['csrf_token'] ?? '', ENT_QUOTES, 'UTF-8')?>">
   <div class="bfc-heading">
     <div><h2>Lüfterkurven</h2><p>Wähle für jeden Lüfter einen Sensor und die passende Kurve.</p></div>
@@ -23,6 +23,20 @@ Icon="tachometer"
       <span id="bfc-updated" class="bfc-updated"></span>
     </div>
   </form>
+  <section class="bfc-test" aria-labelledby="bfc-test-heading">
+    <h3 id="bfc-test-heading">Lüfter testen</h3>
+    <p>Feste PWM-Leistung statt Temperaturkurve. Die Drehzahl wird gemessen; sie wird nicht auf einen RPM-Sollwert geregelt. Danach gilt automatisch wieder die bisherige Kurve oder Hardware-Automatik. Der Schutz bleibt aktiv.</p>
+    <form id="bfc-test-form" class="bfc-test-controls">
+      <label>Lüfter<select id="bfc-test-fan"><option value="cpu">CPU-Lüfter</option><option value="system">Gehäuselüfter</option></select></label>
+      <label>Leistung · %<input id="bfc-test-percent" type="number" min="20" max="100" step="1" value="80" required></label>
+      <label>Dauer<select id="bfc-test-duration"><option value="30">30 Sekunden</option><option value="60" selected>1 Minute</option><option value="120">2 Minuten</option><option value="300">5 Minuten</option></select></label>
+      <button id="bfc-test-start" class="bfc-primary" type="submit" disabled>Test starten / Wert übernehmen</button>
+      <button id="bfc-test-stop" type="button" disabled>Test beenden</button>
+    </form>
+    <p id="bfc-test-status" role="status" aria-live="polite">Kein Test aktiv.</p>
+    <button id="bfc-diagnostics" type="button">Diagnose herunterladen</button>
+    <p class="bfc-card-help">Jeder übernommene Wert startet die gewählte Zeit neu. Ein Test läuft auch bei geschlossenem Browser bis zum Ablauf weiter. Kurven speichern oder Automatik wählen beendet den Test ebenfalls. Der Diagnosemitschnitt enthält Messwerte, Hardwaremodus und Sollwerte im Zwei-Sekunden-Takt und liegt nur im RAM.</p>
+  </section>
   <p class="bfc-footnote">Zwischen den Kurvenpunkten wird die Leistung gleichmäßig angepasst. Einstellungen gelten auch nach einem Neustart. Beim Ausschalten einer eigenen Kurve wird die bisherige Hardware-Automatik wiederhergestellt.</p>
 </section>
-<script src="/plugins/beelink-fan-control/app.js?v=20261012"></script>
+<script src="/plugins/beelink-fan-control/app.js?v=202610311"></script>

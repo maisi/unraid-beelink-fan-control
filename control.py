@@ -19,6 +19,7 @@ import syslog
 import tempfile
 import threading
 import time
+import uuid
 
 PLUGIN = "beelink-fan-control"
 CONFIG = Path("/boot/config/plugins") / PLUGIN / "config.json"
@@ -27,6 +28,47 @@ SHARED_LOCK = Path("/var/run/beelink-fan.lock")
 FANS = {"cpu": (2, "CPU-Lüfter"), "system": (3, "Gehäuselüfter")}
 INTERVAL = 2
 WATCHDOG_TIMEOUT = 10
+TRACE_LIMIT = 512 * 1024
+
+
+def active_test():
+    test = read_json(RUN / "test.json")
+    if not isinstance(test, dict):
+        return None
+    try:
+        if test.get("fan") not in FANS:
+            return None
+        number(test.get("percent"), 20, 100, "Testleistung")
+        number(test.get("expires_mono"), 0, float("inf"), "Testende")
+    except (ValueError, TypeError):
+        return None
+    remaining = test["expires_mono"] - time.monotonic()
+    if not 0 < remaining <= 300:
+        return None
+    return {**test, "remaining_s": round(remaining, 1)}
+
+
+def record_sample(sample):
+    """Bounded RAM-only trace; never write routine readings to USB flash."""
+    path = RUN / "trace.jsonl"
+    if path.exists() and path.stat().st_size >= TRACE_LIMIT:
+        path.replace(RUN / "trace.previous.jsonl")
+    with path.open("a") as handle:
+        handle.write(json.dumps(sample, ensure_ascii=False, allow_nan=False) + "\n")
+
+
+def diagnostic_samples():
+    samples = []
+    for name in ("trace.previous.jsonl", "trace.jsonl"):
+        try:
+            for line in (RUN / name).read_text().splitlines():
+                try:
+                    samples.append(json.loads(line))
+                except ValueError:
+                    pass  # A reader can catch an unfinished final line.
+        except FileNotFoundError:
+            pass
+    return samples[-900:]
 
 
 def atomic_json(path, value):
@@ -105,13 +147,15 @@ def curve_percent(points, temperature):
     return points[-1]["percent"]
 
 
-def target_percent(fan, selected_c, cpu_c, rpm, age, emergency_c):
+def target_percent(fan, selected_c, cpu_c, rpm, age, emergency_c, test_percent=None):
     if cpu_c is None or selected_c is None:
         return 100.0, "sensor_error"
     if cpu_c >= emergency_c:
         return 100.0, "emergency"
     if age >= 8 and (rpm is None or rpm < 200):
         return 100.0, "fan_error"
+    if test_percent is not None:
+        return test_percent, "test"
     return curve_percent(fan["points"], selected_c), "curve"
 
 
@@ -218,13 +262,18 @@ class Hardware:
 
     def set_percent(self, key, percent):
         mode = self.attribute(key, "_enable")
+        current_mode = self.read(mode)
         if percent >= 100:
-            self.write(mode, 0)  # IT8613: atomically enter full speed.
+            if current_mode != 0:
+                self.write(mode, 0)  # IT8613: atomically enter full speed.
         else:
-            if self.read(mode) == 2:
+            if current_mode == 2:
                 self.write(mode, 0)  # Full speed before taking manual control.
-            self.write(mode, 1)
-            self.write(self.attribute(key, ""), int(percent * 255 / 100 + 0.5))
+            if current_mode != 1:
+                self.write(mode, 1)
+            duty = int(percent * 255 / 100 + 0.5)
+            if self.read(self.attribute(key, "")) != duty:
+                self.write(self.attribute(key, ""), duty)
 
     def fan_state(self):
         result = {}
@@ -237,7 +286,10 @@ class Hardware:
             pwm = self.read(chip / ("pwm%d" % channel)) if chip else None
             result[key] = {"label": label, "available": chip is not None,
                            "rpm": self.read(chip / ("fan%d_input" % channel)) if chip else None,
-                           "mode": mode, "percent": round(pwm * 100 / 255, 1) if mode in (0, 1) and pwm is not None else None}
+                           "mode": mode, "pwm_raw": pwm,
+                           "auto_start": self.read(chip / ("pwm%d_auto_start" % channel)) if chip else None,
+                           "pwm_freq": self.read(chip / ("pwm%d_freq" % channel)) if chip else None,
+                           "percent": 100.0 if mode == 0 else round(pwm * 100 / 255, 1) if mode == 1 and pwm is not None else None}
         return result
 
 
@@ -369,6 +421,7 @@ def daemon():
         fcntl.flock(service_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
         return
+    (RUN / "test.json").unlink(missing_ok=True)  # Tests never survive a service restart.
     (RUN / "daemon.pid").write_text(str(os.getpid()))
     stop = threading.Event()
     for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
@@ -376,34 +429,41 @@ def daemon():
     hardware = Hardware()
     session = None
     active_config = None
+    active_keys = []
     controllers = {}
     previous_error = None
     try:
         while not stop.is_set():
             error = None
             targets = {}
+            sample = {"time": time.time()}
             try:
                 config = load_config(hardware)
-                if config != active_config:
+                test = active_test()
+                keys = [key for key in FANS if config["fans"][key]["enabled"] or (test and test["fan"] == key)]
+                if config != active_config or keys != active_keys:
                     if session:
                         session.close()
                         session = None
                     active_config = config
+                    active_keys = keys
                     controllers = {key: Hysteresis() for key in FANS}
-                keys = [key for key in FANS if config["fans"][key]["enabled"]]
+                sensors = hardware.sensors()
+                by_id = {sensor["id"]: sensor for sensor in sensors}
+                cpu_c = next((s["celsius"] for s in sensors if s["chip"] == "coretemp" and s["channel"] == "temp1_input"), None)
+                states = hardware.fan_state()
+                sample.update({"cpu_c": cpu_c, "fans": states,
+                               "temperatures": {s["id"]: s["celsius"] for s in sensors}, "test": test})
                 if keys and session is None:
                     session = ProtectedSession(hardware, keys)
                 if session:
                     session.pulse()
-                    sensors = hardware.sensors()
-                    by_id = {sensor["id"]: sensor for sensor in sensors}
-                    cpu_c = next((s["celsius"] for s in sensors if s["chip"] == "coretemp" and s["channel"] == "temp1_input"), None)
-                    states = hardware.fan_state()
                     for key in keys:
                         fan = config["fans"][key]
                         selected_c = by_id.get(fan["sensor"], {}).get("celsius")
                         requested, reason = target_percent(fan, selected_c, cpu_c, states[key]["rpm"],
-                                                           time.monotonic() - session.started, config["emergency_c"])
+                                                           time.monotonic() - session.started, config["emergency_c"],
+                                                           test["percent"] if test and test["fan"] == key else None)
                         percent = controllers[key].apply(requested, selected_c if selected_c is not None else cpu_c,
                                                          config["hysteresis_c"], reason != "curve")
                         hardware.set_percent(key, percent)
@@ -421,11 +481,17 @@ def daemon():
                 if error:
                     syslog.syslog(syslog.LOG_ERR, PLUGIN + ": " + error)
                 previous_error = error
+            sample.update({"targets": targets, "error": error})
+            try:
+                record_sample(sample)
+            except OSError as trace_error:
+                syslog.syslog(syslog.LOG_ERR, PLUGIN + " trace: " + str(trace_error))
             atomic_json(RUN / "state.json", {"updated": time.time(), "error": error, "targets": targets})
             stop.wait(INTERVAL)
     finally:
         if session:
             session.close()
+        (RUN / "test.json").unlink(missing_ok=True)
         (RUN / "daemon.pid").unlink(missing_ok=True)
         atomic_json(RUN / "state.json", {"updated": time.time(), "error": None, "targets": {}})
         service_lock.close()
@@ -436,6 +502,7 @@ def snapshot(hardware):
     for sensor in sensors:
         sensor.pop("path", None)
     return {"ok": True, "config": load_config(hardware), "sensors": sensors,
+            "test": active_test(),
             "fans": hardware.fan_state(), "service": {"running": daemon_pid() is not None,
             **read_json(RUN / "state.json", {"updated": None, "error": None, "targets": {}})}}
 
@@ -455,12 +522,34 @@ def api(request, hardware):
             hardware.fan_chip()
         start_service()
         atomic_json(CONFIG, config)
+        (RUN / "test.json").unlink(missing_ok=True)
     elif action == "auto":
         config = load_config(hardware)
         for fan in config["fans"].values():
             fan["enabled"] = False
         atomic_json(CONFIG, config)
+        (RUN / "test.json").unlink(missing_ok=True)
         start_service()
+    elif action == "test_start":
+        test = request.get("test")
+        if not isinstance(test, dict) or test.get("fan") not in FANS:
+            raise ValueError("Bitte einen gültigen Testlüfter auswählen.")
+        percent = number(test.get("percent"), 20, 100, "Testleistung")
+        duration = number(test.get("duration"), 10, 300, "Testdauer")
+        hardware.check_board()
+        hardware.fan_chip()
+        config = load_config(hardware)
+        sensor = config["fans"][test["fan"]]["sensor"]
+        if not any(s["id"] == sensor and s["celsius"] is not None for s in hardware.sensors()):
+            raise ValueError("Der gespeicherte Temperatursensor ist nicht verfügbar.")
+        start_service()
+        atomic_json(RUN / "test.json", {"id": uuid.uuid4().hex, "fan": test["fan"], "percent": percent,
+                                      "duration": duration, "expires_mono": time.monotonic() + duration})
+    elif action == "test_stop":
+        (RUN / "test.json").unlink(missing_ok=True)
+    elif action == "diagnostics":
+        return {"ok": True, "status": snapshot(hardware), "samples": diagnostic_samples(),
+                "sampling": "Fan readings precede the target writes in each two-second cycle."}
     elif action != "status":
         raise ValueError("Unbekannte Aktion.")
     return snapshot(hardware)

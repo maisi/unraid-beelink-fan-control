@@ -54,4 +54,9 @@
 .bfc-message { padding: 12px 16px; border-radius: 5px; margin: 0 0 20px; background: rgba(71,160,113,.12); border: 1px solid rgba(71,160,113,.35); line-height: 1.5; }
 .bfc-message.error { background: rgba(230,92,56,.1); border-color: rgba(230,92,56,.4); }
 .bfc input:invalid { border-color: #e05f43; }
+.bfc-test { margin-top: 28px; padding-top: 24px; border-top: 1px solid rgba(128,128,128,.25); }
+.bfc-test p { line-height: 1.6; }
+.bfc-test-controls { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
+.bfc-test-controls label { margin: 0; }
+.bfc-test-controls input, .bfc-test-controls select { display: block; width: 150px; margin: 6px 0 0; }
 @media(max-width: 850px) { .bfc-grid { grid-template-columns: 1fr; } .bfc-heading { align-items: flex-start; flex-direction: column; gap: 14px; } .bfc-updated { margin-left: 0; } }
