@@ -68,7 +68,7 @@ fs.mkdirSync(artifacts, { recursive: true });
     const original = JSON.stringify(config);
     await page.locator('#bfc-test-percent').fill('80');
     await page.locator('#bfc-test-start').click();
-    await page.waitForFunction(() => document.querySelector('#bfc-test-status').textContent.includes('Test aktiv'));
+    await page.waitForFunction(() => document.querySelector('#bfc-test-status').textContent.startsWith('CPU-Lüfter: 80 % angefordert'));
     assert.equal(await page.locator('#bfc-mode-cpu').innerText(), 'Testmodus · feste Leistung');
     assert.equal(test.percent,80);
     assert.equal(test.duration,60);
